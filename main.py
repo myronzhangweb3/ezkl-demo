@@ -174,7 +174,7 @@ async def main():
     )
     assert res == True
 
-    verify_contract_addr_file = "data/addr.txt1"
+    verify_contract_addr_file = "data/addr.txt"
     rpc_url = "http://127.0.0.1:3030"
     await ezkl.deploy_evm(
         addr_path=verify_contract_addr_file,
