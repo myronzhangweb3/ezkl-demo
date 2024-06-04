@@ -10,8 +10,6 @@ import os
 import json
 import torch
 
-from install import install
-
 
 # Defines the model
 # we got convs, we got relu, we got linear layers
@@ -30,6 +28,7 @@ class MyModel(nn.Module):
         self.d2 = nn.Linear(48, 10)
 
     def forward(self, x):
+        print(f"forward input: {x}")
         # 32x1x28x28 => 32x32x26x26
         x = self.conv1(x)
         x = self.relu(x)
@@ -46,11 +45,15 @@ class MyModel(nn.Module):
         # logits => 32x10
         logits = self.d2(x)
 
+        print(f"forward output: {logits}")
+
         return logits
 
 
 async def main():
     circuit = MyModel()
+    # Train the model as you like here (skipped for brevity)
+
     model_path = os.path.join('data/network.onnx')
     compiled_model_path = os.path.join('data/network.compiled')
     pk_path = os.path.join('data/test.pk')
@@ -58,8 +61,9 @@ async def main():
     settings_path = os.path.join('data/settings.json')
 
     witness_path = os.path.join('data/witness.json')
-    data_path = os.path.join('data/input.json')
+    input_data_path = os.path.join('data/input.json')
     srs_path = os.path.join('data/kzg14.srs')
+    output_path = os.path.join('data/output.json')
 
     shape = [1, 28, 28]
     # After training, export to onnx (network.onnx) and create a data file (input.json)
@@ -67,6 +71,14 @@ async def main():
 
     # Flips the neural net into inference mode
     circuit.eval()
+
+    # Get the output of the model
+    with torch.no_grad():
+        output = circuit(x)
+    # Save the output to a file
+    output_data = output.detach().numpy().tolist()
+    with open(output_path, 'w') as f:
+        json.dump(output_data, f)
 
     # Export the model
     torch.onnx.export(circuit,  # model being run
@@ -85,7 +97,7 @@ async def main():
     data = dict(input_data=[data_array])
 
     # Serialize data into file:
-    json.dump(data, open(data_path, 'w'))
+    json.dump(data, open(input_data_path, 'w'))
 
     py_run_args = ezkl.PyRunArgs()
     py_run_args.input_visibility = "public"
@@ -93,7 +105,7 @@ async def main():
     py_run_args.param_visibility = "fixed"  # "fixed" for params means that the committed to params are used for all proofs
 
     res = ezkl.gen_settings(model_path, settings_path, py_run_args=py_run_args)
-    assert res == True
+    assert res is True
 
     cal_path = os.path.join("data/calibration.json")
 
@@ -107,14 +119,15 @@ async def main():
     await ezkl.calibrate_settings(cal_path, model_path, settings_path, "resources")
 
     res = ezkl.compile_circuit(model_path, compiled_model_path, settings_path)
-    assert res == True
+    assert res is True
 
     # srs path
     res = await ezkl.get_srs(settings_path, srs_path=srs_path)
+    assert res is True
 
     # now generate the witness file
 
-    res = await ezkl.gen_witness(data_path, compiled_model_path, witness_path)
+    res = await ezkl.gen_witness(input_data_path, compiled_model_path, witness_path)
     assert os.path.isfile(witness_path)
 
     # HERE WE SETUP THE CIRCUIT PARAMS
@@ -129,15 +142,13 @@ async def main():
         srs_path
     )
 
-    assert res == True
+    assert res is True
     assert os.path.isfile(vk_path)
     assert os.path.isfile(pk_path)
     assert os.path.isfile(settings_path)
 
     # GENERATE A PROOF
-
     proof_path = os.path.join('data/test.pf')
-
     res = ezkl.prove(
         witness_path,
         compiled_model_path,
@@ -146,21 +157,17 @@ async def main():
         "single",
         srs_path
     )
-
-    print(res)
     assert os.path.isfile(proof_path)
 
     # VERIFY IT ON LOCAL
-
     res = ezkl.verify(
         proof_path,
         settings_path,
         vk_path,
         srs_path
     )
-
-    assert res == True
-    print("verified")
+    assert res is True
+    print("verified on local")
 
     # VERIFY IT ON CHAIN
     verify_sol_code_path = os.path.join('data/verify.sol')
@@ -172,8 +179,7 @@ async def main():
         verify_sol_abi_path,
         srs_path
     )
-    assert res == True
-
+    assert res is True
     verify_contract_addr_file = "data/addr.txt"
     rpc_url = "http://127.0.0.1:3030"
     await ezkl.deploy_evm(
@@ -185,16 +191,15 @@ async def main():
         with open(verify_contract_addr_file, 'r') as file:
             verify_contract_addr = file.read()
     else:
-        print(f"File {verify_contract_addr_file} does not exist.")
+        print(f"error: File {verify_contract_addr_file} does not exist.")
         return
     res = await ezkl.verify_evm(
         addr_verifier=verify_contract_addr,
         proof_path=proof_path,
         rpc_url=rpc_url
     )
-    assert res == True
+    assert res is True
     print("verified on chain")
-
 
 
 import asyncio
