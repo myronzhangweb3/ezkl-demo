@@ -1,5 +1,5 @@
 # https://docs.ezkl.xyz/
-# https://colab.research.google.com/github/zkonduit/ezkl/blob/main/examples/notebooks/simple_demo_all_public.ipynb#scrollTo=76f00d41
+# https://colab.research.google.com/github/zkonduit/ezkl/blob/main/examples/notebooks/simple_demo_all_public.ipynb
 
 # here we create and (potentially train a model)
 
